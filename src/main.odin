@@ -1,5 +1,6 @@
 package main
-
+import "core:fmt"
+import la "core:math/linalg"
 import "core:time"
 import rl "vendor:raylib"
 
@@ -26,6 +27,7 @@ main :: proc() {
 	}
 
 	rl.SetWindowState({.FULLSCREEN_MODE})
+	hl = get_hl(0.5, 0.01)
 
 	cam := rl.Camera3D {
 		up         = {0, 1, 0},
@@ -46,6 +48,8 @@ main :: proc() {
 	track.materials[0].shader = unlit
 	track.materials[1].shader = uv_preview
 
+	append(&trackMeshes, track.meshes[0])
+
 	skybox_model.materials[0].shader = skybox
 
 	add_mesh_collider(track.meshes[0], &StaticColliders)
@@ -54,7 +58,7 @@ main :: proc() {
 	player := create_player()
 	defer free(player)
 
-	player.position = {30, -1, -40}
+	player.position = {30, 10, -40}
 
 	rl.DisableCursor()
 	defer rl.EnableCursor()
@@ -64,16 +68,26 @@ main :: proc() {
 
 	for !rl.WindowShouldClose() {
 		//rl.UpdateCamera(&cam, .FREE)
-		camera_follow_player(&cam, player)
 		dt = rl.GetFrameTime()
 		//dt = 0
 		//if rl.IsKeyPressed(.PERIOD) do dt = 0.016667
 		update_input()
 		player_update(player, dt)
-		player_physics_update(player, dt)
+		fmt.println("pre orient:", player.rotation)
 		player_orient_towards_up(player, track.meshes[0], dt)
+		fmt.println("post orient:", player.rotation)
+		player_physics_update(player, dt)
+
+		camera_follow_player(&cam, player, dt)
+		if rl.IsKeyPressed(.ONE) {
+			player.rotation = quaternion128(1)
+			player.position = {30, -1, -40}
+			player.rb.linVel = {0, 0, 0}
+		}
 		rl.BeginDrawing()
 		{
+			rayDistance: f32
+			rayHit: bool
 			rl.ClearBackground(rl.WHITE)
 			rl.BeginMode3D(cam)
 			{
@@ -81,16 +95,41 @@ main :: proc() {
 				player_render(player, &player_model)
 				rl.DrawModel(track, {0, 0, 0}, 1, rl.WHITE)
 				draw_collider(player.collider)
+				for w in player.wheels {
+					draw_wheel(w, player.position, player.rotation, player.orientationUp)
+				}
+				ray := rl.Ray {
+					position  = player.position,
+					direction = -player_up(player),
+				}
+				hitInfo := rl.GetRayCollisionMesh(ray, track.meshes[0], rl.Matrix(1))
+				rayHit = hitInfo.hit
+				rayDistance = hitInfo.distance
+				if rayHit {
+					rl.DrawLine3D(
+						player.position,
+						player.position + rayDistance * ray.direction,
+						rl.RED,
+					)
+					rl.DrawCircle3D(
+						player.position + rayDistance * ray.direction,
+						.1,
+						{1, 0, 0},
+						90,
+						rl.RED,
+					)
+				}
 			}
 			rl.EndMode3D()
+			rl.DrawRectangle(0, 0, 500, 400, rl.ColorAlpha(rl.BLACK, .5))
 			rl.DrawText("Hello, world!", 20, 20, 20, rl.RED)
 			rl.DrawFPS(20, 50)
 			rl.DrawText(
-				rl.TextFormat("speed: %.4f", player.speedHorizontal),
+				rl.TextFormat("speed: %.4f", la.length(player.rb.linVel)),
 				20,
 				80,
 				20,
-				rl.DARKPURPLE,
+				rl.SKYBLUE,
 			)
 			rl.DrawText(
 				rl.TextFormat(
@@ -105,6 +144,39 @@ main :: proc() {
 				rl.PURPLE,
 			)
 			rl.DrawText(rl.TextFormat("Grounded: %i", player.isGrounded), 20, 140, 20, rl.ORANGE)
+			rl.DrawText(
+				rl.TextFormat(
+					"Velocity: [%.3f %.3f %.3f]",
+					player.rb.linVel.x,
+					player.rb.linVel.y,
+					player.rb.linVel.z,
+				),
+				20,
+				170,
+				20,
+				rl.ORANGE,
+			)
+			rl.DrawText(
+				rl.TextFormat(
+					"Rotation: [%.3f, %.3f, %.3f, %.3f]",
+					player.rotation.x,
+					player.rotation.y,
+					player.rotation.z,
+					player.rotation.w,
+				),
+				20,
+				200,
+				20,
+				rl.LIGHTGRAY,
+			)
+			forw := player_forward(player)
+			rl.DrawText(
+				rl.TextFormat("Forward: [%.3f %.3f %.3f]", forw.x, forw.y, forw.z),
+				20,
+				230,
+				20,
+				rl.LIGHTGRAY,
+			)
 		}
 		rl.EndDrawing()
 	}
@@ -147,7 +219,8 @@ unload_shaders :: proc() {
 	rl.UnloadShader(skybox)
 }
 
-camera_follow_player :: proc(cam: ^rl.Camera3D, player: ^Player) {
+camera_follow_player :: proc(cam: ^rl.Camera3D, player: ^Player, dt: f32) {
 	cam.target = player.position + player.localUp
-	cam.position = player.position + player_forward(player) * -3 + player.localUp * 1
+	targetPos := cam.target - player_forward(player) * 3
+	cam.position = nondt_lerp(targetPos, cam.position, dt, hl)
 }

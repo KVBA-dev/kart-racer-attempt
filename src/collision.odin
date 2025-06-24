@@ -2,15 +2,15 @@ package main
 
 import "core:fmt"
 import "core:math"
-import "core:math/linalg"
+import la "core:math/linalg"
+import "core:slice"
 import rl "vendor:raylib"
 
 // Collision data structure
 Collision :: struct {
-	face_index:    int, // Index of the collided face
-	distance:      f32, // Penetration distance
-	direction:     rl.Vector3, // Collision normal (direction away from surface)
-	contact_point: rl.Vector3, // Point of contact on the surface
+	distance:      f32,
+	direction:     rl.Vector3,
+	contact_point: rl.Vector3,
 }
 
 // Triangle structure for mesh faces
@@ -31,9 +31,43 @@ Collider :: union {
 
 StaticColliders: [dynamic]MeshCollider
 
+Rigidbody :: struct {
+	centerOfMass: rl.Vector3,
+	linAccel:     rl.Vector3,
+	linVel:       rl.Vector3,
+	angAccel:     rl.Vector3,
+	angVel:       rl.Vector3,
+	mass:         f32,
+}
+
 init_collision :: proc() {
 	StaticColliders = make([dynamic]MeshCollider)
 	collisions = make([dynamic]Collision)
+}
+
+rigidbody_update :: proc(using rb: ^Rigidbody, dt: f32) {
+	linVel += linAccel * dt
+	angVel += angAccel * dt
+}
+
+rigidbody_update_position :: proc(
+	using rb: ^Rigidbody,
+	pos: ^rl.Vector3,
+	rot: ^rl.Quaternion,
+	dt: f32,
+) {
+	pos^ = pos^ + linVel * dt
+	angDt := angVel * dt
+	rot^ = rot^ * la.quaternion_from_euler_angles(angDt.x, angDt.y, angDt.z, .XYZ)
+}
+
+rigidbody_end_timestep :: proc(using rb: ^Rigidbody) {
+	linAccel = {0, 0, 0}
+	angAccel = {0, 0, 0}
+}
+
+add_force :: proc(using rb: ^Rigidbody, force: rl.Vector3) {
+	linAccel += force / mass
 }
 
 destroy_collision :: proc() {
@@ -314,6 +348,19 @@ CheckCollisionSpheres :: proc(s1, s2: SphereCollider) -> (bool, Collision) {
 	}
 	return false, {}
 }
+
+// HACK: no need to create a new struct or other hacks
+currUp: rl.Vector3
+
+sort_collisions_predicate :: proc(a, b: Collision) -> bool {
+	return la.dot(a.direction, currUp) < la.dot(b.direction, currUp)
+}
+
+sort_collisions_by_grounding :: proc(cols: []Collision, up: rl.Vector3) {
+	currUp = up
+	slice.sort_by(cols, sort_collisions_predicate)
+}
+
 draw_octree :: proc(octree: ^Octree) {
 	if octree == nil {
 		return
