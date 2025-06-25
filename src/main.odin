@@ -26,8 +26,8 @@ main :: proc() {
 		rl.CloseWindow()
 	}
 
-	rl.SetWindowState({.FULLSCREEN_MODE})
-	hl = get_hl(0.5, 0.01)
+	rl.SetWindowState({.FULLSCREEN_MODE, .MSAA_4X_HINT})
+	hl = get_hl(3, 0.01)
 
 	cam := rl.Camera3D {
 		up         = {0, 1, 0},
@@ -42,11 +42,11 @@ main :: proc() {
 	init_input()
 	init_collision()
 
-	keys := [?]rl.KeyboardKey{.W, .S, .A, .D}
-	register_keys(keys[:])
+	register_keys([]rl.KeyboardKey{.W, .S, .A, .D})
 
 	track.materials[0].shader = unlit
-	track.materials[1].shader = uv_preview
+	track.materials[1].shader = unlit
+	track.materials[2].shader = unlit
 
 	append(&trackMeshes, track.meshes[0])
 
@@ -58,7 +58,7 @@ main :: proc() {
 	player := create_player()
 	defer free(player)
 
-	player.position = {30, 10, -40}
+	player.position = {30, -1, -40}
 
 	rl.DisableCursor()
 	defer rl.EnableCursor()
@@ -67,17 +67,15 @@ main :: proc() {
 	//rl.SetTargetFPS(60)
 
 	for !rl.WindowShouldClose() {
-		//rl.UpdateCamera(&cam, .FREE)
 		dt = rl.GetFrameTime()
 		//dt = 0
 		//if rl.IsKeyPressed(.PERIOD) do dt = 0.016667
 		update_input()
+		player.axisH = (Input.keys[.D].held ? 1 : 0) - (Input.keys[.A].held ? 1 : 0)
+		player.axisV = (Input.keys[.W].held ? 1 : 0) - (Input.keys[.S].held ? 1 : 0)
 		player_update(player, dt)
-		fmt.println("pre orient:", player.rotation)
-		player_orient_towards_up(player, track.meshes[0], dt)
-		fmt.println("post orient:", player.rotation)
 		player_physics_update(player, dt)
-
+		player_orient_towards_up(player, track.meshes[0], dt)
 		camera_follow_player(&cam, player, dt)
 		if rl.IsKeyPressed(.ONE) {
 			player.rotation = quaternion128(1)
@@ -94,89 +92,11 @@ main :: proc() {
 				rl.DrawModelEx(skybox_model, cam.position, {1, 0, 0}, 90, {-1, -1, -1}, rl.WHITE)
 				player_render(player, &player_model)
 				rl.DrawModel(track, {0, 0, 0}, 1, rl.WHITE)
-				draw_collider(player.collider)
-				for w in player.wheels {
-					draw_wheel(w, player.position, player.rotation, player.orientationUp)
-				}
-				ray := rl.Ray {
-					position  = player.position,
-					direction = -player_up(player),
-				}
-				hitInfo := rl.GetRayCollisionMesh(ray, track.meshes[0], rl.Matrix(1))
-				rayHit = hitInfo.hit
-				rayDistance = hitInfo.distance
-				if rayHit {
-					rl.DrawLine3D(
-						player.position,
-						player.position + rayDistance * ray.direction,
-						rl.RED,
-					)
-					rl.DrawCircle3D(
-						player.position + rayDistance * ray.direction,
-						.1,
-						{1, 0, 0},
-						90,
-						rl.RED,
-					)
-				}
 			}
 			rl.EndMode3D()
-			rl.DrawRectangle(0, 0, 500, 400, rl.ColorAlpha(rl.BLACK, .5))
+			rl.DrawRectangle(0, 0, 400, 180, rl.ColorAlpha(rl.BLACK, .5))
 			rl.DrawText("Hello, world!", 20, 20, 20, rl.RED)
 			rl.DrawFPS(20, 50)
-			rl.DrawText(
-				rl.TextFormat("speed: %.4f", la.length(player.rb.linVel)),
-				20,
-				80,
-				20,
-				rl.SKYBLUE,
-			)
-			rl.DrawText(
-				rl.TextFormat(
-					"pos: [%.3f, %.3f, %.3f]",
-					player.position.x,
-					player.position.y,
-					player.position.z,
-				),
-				20,
-				110,
-				20,
-				rl.PURPLE,
-			)
-			rl.DrawText(rl.TextFormat("Grounded: %i", player.isGrounded), 20, 140, 20, rl.ORANGE)
-			rl.DrawText(
-				rl.TextFormat(
-					"Velocity: [%.3f %.3f %.3f]",
-					player.rb.linVel.x,
-					player.rb.linVel.y,
-					player.rb.linVel.z,
-				),
-				20,
-				170,
-				20,
-				rl.ORANGE,
-			)
-			rl.DrawText(
-				rl.TextFormat(
-					"Rotation: [%.3f, %.3f, %.3f, %.3f]",
-					player.rotation.x,
-					player.rotation.y,
-					player.rotation.z,
-					player.rotation.w,
-				),
-				20,
-				200,
-				20,
-				rl.LIGHTGRAY,
-			)
-			forw := player_forward(player)
-			rl.DrawText(
-				rl.TextFormat("Forward: [%.3f %.3f %.3f]", forw.x, forw.y, forw.z),
-				20,
-				230,
-				20,
-				rl.LIGHTGRAY,
-			)
 		}
 		rl.EndDrawing()
 	}
@@ -185,7 +105,14 @@ main :: proc() {
 load_models :: proc() {
 	track = rl.LoadModel("res/models/track1.obj")
 	track.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
-		"res/textures/road.png",
+		"res/textures/black_08.png",
+	)
+	track.materials[1].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
+		"res/textures/orange_08.png",
+	)
+	track.materials[1].maps[rl.MaterialMapIndex.ALBEDO].color = rl.WHITE
+	track.materials[2].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
+		"res/textures/purple_08.png",
 	)
 	player_model = rl.LoadModel("res/models/vehicle-racer.obj")
 	player_model.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
@@ -207,6 +134,8 @@ load_shaders :: proc() {
 unload_models :: proc() {
 	rl.UnloadTexture(player_model.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture)
 	rl.UnloadTexture(track.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture)
+	rl.UnloadTexture(track.materials[1].maps[rl.MaterialMapIndex.ALBEDO].texture)
+	rl.UnloadTexture(track.materials[2].maps[rl.MaterialMapIndex.ALBEDO].texture)
 	rl.UnloadModel(track)
 	rl.UnloadModel(player_model)
 	rl.UnloadModel(skybox_model)
@@ -221,6 +150,6 @@ unload_shaders :: proc() {
 
 camera_follow_player :: proc(cam: ^rl.Camera3D, player: ^Player, dt: f32) {
 	cam.target = player.position + player.localUp
-	targetPos := cam.target - player_forward(player) * 3
-	cam.position = nondt_lerp(targetPos, cam.position, dt, hl)
+	targetPos := cam.target - player.forw * 3
+	cam.position = lerp(cam.position, targetPos, 15 * dt)
 }

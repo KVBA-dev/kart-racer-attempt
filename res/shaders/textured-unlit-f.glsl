@@ -1,14 +1,14 @@
 #version 330 core
 
-in vec2 fragTexCoord;       // Fragment input attribute: texture coordinate
-in vec4 fragColor;          // Fragment input attribute: color
-out vec4 finalColor;        // Fragment output: color
+in vec2 fragTexCoord;
+in vec4 fragColor;
+out vec4 finalColor;
 
-uniform sampler2D texture0; // Fragment input texture (always required, could be a white pixel)
-uniform vec4 colDiffuse;    // Fragment input color diffuse (multiplied by texture color)
+uniform sampler2D texture0;
+uniform vec4 colDiffuse;
 
 void main() {
 	vec2 uv = fract(fragTexCoord);
 
-	finalColor = texture(texture0, uv);
+	finalColor = colDiffuse * texture(texture0, uv);
 }

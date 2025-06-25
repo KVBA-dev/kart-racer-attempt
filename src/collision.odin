@@ -8,9 +8,9 @@ import rl "vendor:raylib"
 
 // Collision data structure
 Collision :: struct {
-	distance:      f32,
 	direction:     rl.Vector3,
 	contact_point: rl.Vector3,
+	distance:      f32,
 }
 
 // Triangle structure for mesh faces
@@ -68,6 +68,10 @@ rigidbody_end_timestep :: proc(using rb: ^Rigidbody) {
 
 add_force :: proc(using rb: ^Rigidbody, force: rl.Vector3) {
 	linAccel += force / mass
+}
+
+add_acceleration :: proc(using rb: ^Rigidbody, accel: rl.Vector3) {
+	linAccel += accel
 }
 
 destroy_collision :: proc() {
