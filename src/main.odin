@@ -1,11 +1,18 @@
 package main
+import it "base:intrinsics"
 import "core:fmt"
 import la "core:math/linalg"
+import "core:mem"
+import "core:sync"
+import th "core:thread"
 import "core:time"
 import rl "vendor:raylib"
 
 WINDOW_WIDTH :: 1920
 WINDOW_HEIGHT :: 1080
+
+PHYSICS_DT :: .001
+PHYSICS_NS :: 1000000
 
 track: rl.Model
 player_model: rl.Model
@@ -15,6 +22,40 @@ normal_preview: rl.Shader
 uv_preview: rl.Shader
 unlit: rl.Shader
 skybox: rl.Shader
+
+physics_lock := sync.Mutex{}
+running := true
+
+NUM_PLAYERS :: 1
+
+playersPhysicsBuffer: [NUM_PLAYERS]Player
+//playersRenderBuffer: [NUM_PLAYERS]Player
+temp: [NUM_PLAYERS]Player
+
+swap_buffers :: proc() {
+	/*
+	mem.copy(&temp, &playersPhysicsBuffer, NUM_PLAYERS * size_of(Player))
+	mem.copy(&playersPhysicsBuffer, &playersRenderBuffer, NUM_PLAYERS * size_of(Player))
+	mem.copy(&playersRenderBuffer, &temp, NUM_PLAYERS * size_of(Player))
+	*/
+}
+
+physics_thread :: proc() {
+	duration: time.Duration
+	previous := time.now()
+	for running {
+		duration := time.since(previous)
+		if time.duration_milliseconds(duration) < PHYSICS_DT do continue
+		previous = time.time_add(previous, PHYSICS_NS)
+		for &player in playersPhysicsBuffer {
+			player_update(&player, PHYSICS_DT)
+			player_physics_update(&player, PHYSICS_DT)
+		}
+		if sync.mutex_guard(&physics_lock) {
+			swap_buffers()
+		}
+	}
+}
 
 main :: proc() {
 	rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "kart-racer-attempt")
@@ -56,41 +97,47 @@ main :: proc() {
 	add_mesh_collider(track.meshes[2], &StaticColliders)
 
 	player := create_player()
-	defer free(player)
-
 	player.position = {30, -1, -40}
+	playersPhysicsBuffer[0] = player
+	//playersRenderBuffer[0] = player
 
 	rl.DisableCursor()
 	defer rl.EnableCursor()
 
 	dt: f32
-	//rl.SetTargetFPS(60)
+	rayDistance: f32
+	rayHit: bool
+
+	physicsThread := th.create_and_start(physics_thread)
 
 	for !rl.WindowShouldClose() {
 		dt = rl.GetFrameTime()
-		//dt = 0
-		//if rl.IsKeyPressed(.PERIOD) do dt = 0.016667
 		update_input()
-		player.axisH = (Input.keys[.D].held ? 1 : 0) - (Input.keys[.A].held ? 1 : 0)
-		player.axisV = (Input.keys[.W].held ? 1 : 0) - (Input.keys[.S].held ? 1 : 0)
-		player_update(player, dt)
-		player_physics_update(player, dt)
-		player_orient_towards_up(player, track.meshes[0], dt)
-		camera_follow_player(&cam, player, dt)
-		if rl.IsKeyPressed(.ONE) {
-			player.rotation = quaternion128(1)
-			player.position = {30, -1, -40}
-			player.rb.linVel = {0, 0, 0}
+		if sync.mutex_guard(&physics_lock) {
+			currplayer := &playersPhysicsBuffer[0]
+			//currplayer := &playersRenderBuffer[0]
+			currplayer.axisH = (Input.keys[.D].held ? 1 : 0) - (Input.keys[.A].held ? 1 : 0)
+			currplayer.axisV = (Input.keys[.W].held ? 1 : 0) - (Input.keys[.S].held ? 1 : 0)
+			player_orient_towards_up(currplayer, track.meshes[0], dt)
+			camera_follow_player(&cam, currplayer, dt)
+			if rl.IsKeyPressed(.ONE) {
+				player.rotation = quaternion128(1)
+				player.position = {30, -1, -40}
+				player.rb.linVel = {0, 0, 0}
+			}
 		}
 		rl.BeginDrawing()
 		{
-			rayDistance: f32
-			rayHit: bool
 			rl.ClearBackground(rl.WHITE)
 			rl.BeginMode3D(cam)
 			{
 				rl.DrawModelEx(skybox_model, cam.position, {1, 0, 0}, 90, {-1, -1, -1}, rl.WHITE)
-				player_render(player, &player_model)
+				if sync.mutex_guard(&physics_lock) {
+					for &player in playersPhysicsBuffer {
+						//for &player in playersRenderBuffer {
+						player_render(&player, &player_model)
+					}
+				}
 				rl.DrawModel(track, {0, 0, 0}, 1, rl.WHITE)
 			}
 			rl.EndMode3D()
@@ -100,6 +147,8 @@ main :: proc() {
 		}
 		rl.EndDrawing()
 	}
+	running = false
+	th.join(physicsThread)
 }
 
 load_models :: proc() {

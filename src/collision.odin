@@ -35,8 +35,6 @@ Rigidbody :: struct {
 	centerOfMass: rl.Vector3,
 	linAccel:     rl.Vector3,
 	linVel:       rl.Vector3,
-	angAccel:     rl.Vector3,
-	angVel:       rl.Vector3,
 	mass:         f32,
 }
 
@@ -47,23 +45,14 @@ init_collision :: proc() {
 
 rigidbody_update :: proc(using rb: ^Rigidbody, dt: f32) {
 	linVel += linAccel * dt
-	angVel += angAccel * dt
 }
 
-rigidbody_update_position :: proc(
-	using rb: ^Rigidbody,
-	pos: ^rl.Vector3,
-	rot: ^rl.Quaternion,
-	dt: f32,
-) {
+rigidbody_update_position :: proc(using rb: ^Rigidbody, pos: ^rl.Vector3, dt: f32) {
 	pos^ = pos^ + linVel * dt
-	angDt := angVel * dt
-	rot^ = rot^ * la.quaternion_from_euler_angles(angDt.x, angDt.y, angDt.z, .XYZ)
 }
 
 rigidbody_end_timestep :: proc(using rb: ^Rigidbody) {
 	linAccel = {0, 0, 0}
-	angAccel = {0, 0, 0}
 }
 
 add_force :: proc(using rb: ^Rigidbody, force: rl.Vector3) {

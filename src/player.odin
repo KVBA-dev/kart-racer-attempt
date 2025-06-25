@@ -9,43 +9,39 @@ import rl "vendor:raylib"
 hl: f32
 
 Player :: struct {
-	wheels:        [3]WheelRaycaster,
-	rb:            Rigidbody,
-	collider:      SphereCollider,
-	rotation:      rl.Quaternion,
-	position:      rl.Vector3,
-	localUp:       rl.Vector3,
-	orientationUp: rl.Vector3,
-	up:            rl.Vector3,
-	forw:          rl.Vector3,
-	right:         rl.Vector3,
-	axisV:         f32,
-	axisH:         f32,
-	isGrounded:    bool,
+	wheels:     [3]WheelRaycaster, // 29 * 3 = 87
+	rb:         Rigidbody, // 40
+	rotation:   rl.Quaternion, // 16
+	position:   rl.Vector3, // 12
+	localUp:    rl.Vector3, // 12
+	up:         rl.Vector3, // 12
+	forw:       rl.Vector3, // 12
+	right:      rl.Vector3, // 12
+	axisV:      f32, // 4
+	axisH:      f32, // 4
+	radius:     f32, // 4
+	isGrounded: bool, // 1
 }
 
-create_player :: proc() -> ^Player {
-	p := new(Player)
-	p.collider = SphereCollider {
-		radius = .4,
-	}
+create_player :: proc() -> Player {
+	p := Player{}
+	p.radius = .4
 	p.rotation = la.QUATERNIONF32_IDENTITY
 	p.localUp = {0, 1, 0}
 	p.rb.mass = 200
 	p.rb.linVel = {0, 0, 0}
-	p.rb.angVel = {0, 0, 0}
 	for i in 0 ..< 3 {
 		p.wheels[i] = WheelRaycaster {
-			length = p.collider.radius * 1.05,
+			length = p.radius * 1.05,
 			normal = {0, 1, 0},
 		}
 		switch i {
 		case 0:
-			p.wheels[i].relPosition = {0, 0, 1} * p.collider.radius
+			p.wheels[i].relPosition = {0, 0, 1} * p.radius
 		case 1:
-			p.wheels[i].relPosition = {-0.7, 0, -0.5} * p.collider.radius
+			p.wheels[i].relPosition = {-0.7, 0, -0.5} * p.radius
 		case 2:
-			p.wheels[i].relPosition = {0.7, 0, -0.5} * p.collider.radius
+			p.wheels[i].relPosition = {0.7, 0, -0.5} * p.radius
 		case:
 			panic("something went REALLY wrong")
 		}
@@ -99,7 +95,6 @@ player_update :: proc(using player: ^Player, dt: f32) {
 			la.quaternion_angle_axis_f32(turnAmount * turnSpeed * dt * math.RAD_PER_DEG, localUp) *
 			rotation
 	}
-	collider.center = position
 }
 
 player_orient_towards_up :: proc(
@@ -113,7 +108,7 @@ player_orient_towards_up :: proc(
 		direction = -player_up(player),
 	}
 
-	orientationUp = localUp
+	orientationUp := localUp
 	collision := rl.GetRayCollisionMesh(ray, mesh, rl.Matrix(1))
 	if collision.hit && collision.distance < maxDistance {
 		orientationUp = collision.normal
@@ -121,7 +116,7 @@ player_orient_towards_up :: proc(
 	angle := angle_between_norm(localUp, orientationUp)
 	axis := la.cross(orientationUp, up)
 	if la.length2(axis) == 0 do return
-	rotation = la.quaternion_angle_axis_f32(-angle * 8 * dt, axis) * rotation
+	rotation = la.quaternion_angle_axis_f32(-angle * 2 * dt, axis) * rotation
 }
 
 // TODO: interact with other objects
@@ -134,7 +129,7 @@ player_physics_update :: proc(using player: ^Player, dt: f32) {
 
 	clear(&allCollisions)
 	for &mc in StaticColliders {
-		collisions := CheckCollisionMeshSphere(mc.mesh, collider)
+		collisions := CheckCollisionMeshSphere(mc.mesh, SphereCollider{position, radius})
 		append(&allCollisions, ..collisions)
 	}
 	sort_collisions_by_grounding(allCollisions[:], localUp)
@@ -147,9 +142,8 @@ player_physics_update :: proc(using player: ^Player, dt: f32) {
 		}
 		position += normal * c.distance
 	}
-	rigidbody_update_position(&rb, &position, &rotation, dt)
+	rigidbody_update_position(&rb, &position, dt)
 	rigidbody_end_timestep(&rb)
-	collider.center = position
 }
 
 player_render :: proc(using player: ^Player, model: ^rl.Model) {
@@ -160,14 +154,7 @@ player_render :: proc(using player: ^Player, model: ^rl.Model) {
 		ax = rl.Vector3{0, 0, 0}
 	}
 
-	rl.DrawModelEx(
-		model^,
-		position - up * collider.radius,
-		ax,
-		an * math.DEG_PER_RAD,
-		{1, 1, 1},
-		rl.WHITE,
-	)
+	rl.DrawModelEx(model^, position - up * radius, ax, an * math.DEG_PER_RAD, {1, 1, 1}, rl.WHITE)
 }
 
 player_forward :: proc(using player: ^Player) -> rl.Vector3 {
