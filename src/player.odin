@@ -50,13 +50,12 @@ create_player :: proc() -> Player {
 }
 
 player_update :: proc(using player: ^Player, dt: f32) {
-
 	up = player_up(player)
 	forw = player_forward(player)
 	right = player_right(player)
 	moveDir := forw
 
-	maxSpeed: f32 = axisV > 0 ? 25 : 10
+	maxSpeed: f32 = axisV >= 0 ? 25 : 10
 	desiredVel := moveDir * axisV * maxSpeed
 
 	currentVel := rb.linVel
@@ -84,22 +83,22 @@ player_update :: proc(using player: ^Player, dt: f32) {
 		}
 	}
 
-
 	if axisH != 0 {
-		turnSpeed: f32 = 60.0
+		turnSpeed: f32 = 100.0
 		turnAmount := -axisH
 		if isGrounded && la.length2(rb.linVel) > 0 {
-			turnAmount *= la.clamp(la.length2(rb.linVel), 0, 1)
+			turnAmount *= la.clamp(la.length(rb.linVel / maxSpeed), 0, 1)
 		}
 		rotation =
 			la.quaternion_angle_axis_f32(turnAmount * turnSpeed * dt * math.RAD_PER_DEG, localUp) *
 			rotation
 	}
+
 }
 
 player_orient_towards_up :: proc(
 	using player: ^Player,
-	mesh: rl.Mesh,
+	mesh: ^Octree,
 	dt: f32,
 	maxDistance: f32 = 10,
 ) {
@@ -109,7 +108,7 @@ player_orient_towards_up :: proc(
 	}
 
 	orientationUp := localUp
-	collision := rl.GetRayCollisionMesh(ray, mesh, rl.Matrix(1))
+	collision := CheckCollisionMeshRay(mesh, ray)
 	if collision.hit && collision.distance < maxDistance {
 		orientationUp = collision.normal
 	}
@@ -125,6 +124,16 @@ player_physics_update :: proc(using player: ^Player, dt: f32) {
 	GRAVITY :: 10.0
 
 	add_acceleration(&rb, rl.Vector3{0, -GRAVITY, 0})
+	localVel := rl.Vector3 {
+		la.dot(right, rb.linVel),
+		la.dot(up, rb.linVel),
+		la.dot(forw, rb.linVel),
+	}
+
+	if isGrounded {
+		sidewaysForce := localVel.x * 0.99
+		add_acceleration(&rb, sidewaysForce * -right)
+	}
 	rigidbody_update(&rb, dt)
 
 	clear(&allCollisions)
@@ -167,9 +176,4 @@ player_up :: proc(using player: ^Player) -> rl.Vector3 {
 
 player_right :: proc(using player: ^Player) -> rl.Vector3 {
 	return la.quaternion_mul_vector3(rotation, rl.Vector3{1, 0, 0})
-}
-
-player_transform :: proc(using player: ^Player) -> rl.Matrix {
-	x, y, z := la.euler_angles_xyz_from_quaternion(rotation)
-	return rl.MatrixRotateXYZ({x, y, z}) + rl.MatrixTranslate(position.x, position.y, position.z)
 }

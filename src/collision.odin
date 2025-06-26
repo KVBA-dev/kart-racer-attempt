@@ -72,7 +72,7 @@ destroy_collision :: proc() {
 }
 
 add_mesh_collider :: proc(mesh: rl.Mesh, collection: ^[dynamic]MeshCollider) {
-	oct := from_mesh(mesh)
+	oct := from_mesh(mesh, 7)
 	append(collection, MeshCollider{oct})
 }
 
@@ -161,7 +161,6 @@ from_mesh :: proc(mesh: rl.Mesh, maxDepth: uint = 5) -> ^Octree {
 
 	tris_temp := make([dynamic]Triangle)
 	defer delete(tris_temp)
-
 
 	for i in 0 ..< mesh.triangleCount {
 		tri := Triangle {
@@ -293,7 +292,7 @@ CheckCollisionSphereTriangle :: proc(sphere: SphereCollider, tri: Triangle) -> (
 	if dist <= sphere.radius {
 		hitinfo := Collision {
 			contact_point = closest,
-			direction     = rl.Vector3Normalize(closest - sphere.center),
+			direction     = -tri.normal,
 			distance      = sphere.radius - dist,
 		}
 		return true, hitinfo
@@ -324,6 +323,64 @@ CheckCollisionMeshSphere :: proc(octree: ^Octree, sphere: SphereCollider) -> []C
 	}
 
 	return {}
+}
+
+// this is basically the same as rl.GetRayCollisionTriangle, except
+// this function uses a precomputed normal from the triangle
+CheckCollisionTriangleRay :: proc(tri: Triangle, ray: rl.Ray) -> rl.RayCollision {
+	EPSILON :: 1e-6
+
+	edge1 := tri.verts[1] - tri.verts[0]
+	edge2 := tri.verts[2] - tri.verts[0]
+
+	p := la.cross(ray.direction, edge2)
+	det := la.dot(edge1, p)
+	if abs(det) < EPSILON do return {}
+	inv_det := 1 / det
+
+	tv := ray.position - tri.verts[0]
+	u := la.dot(tv, p) * inv_det
+	if u < 0 || u > 1 do return {}
+
+	q := la.cross(tv, edge1)
+	v := la.dot(ray.direction, q) * inv_det
+	if (v < 0 || u + v > 1) do return {}
+
+	t := la.dot(edge2, q) * inv_det
+	if t > EPSILON {
+		return {
+			hit = true,
+			distance = t,
+			normal = tri.normal,
+			point = ray.direction * t + ray.position,
+		}
+	}
+	return {}
+}
+
+CheckCollisionMeshRay :: proc(octree: ^Octree, ray: rl.Ray) -> rl.RayCollision {
+	if octree == nil || !(rl.GetRayCollisionBox(ray, octree.box).hit) do return {}
+	hitinfo := rl.RayCollision{}
+	if octree.isLeaf {
+		for t in octree.tris {
+			hi := CheckCollisionTriangleRay(t, ray)
+			if hi.hit && (!hitinfo.hit || (hi.distance < hitinfo.distance)) {
+				hitinfo = hi
+			}
+		}
+		return hitinfo
+	}
+
+	for n in octree.nodes {
+		if n == nil {
+			continue
+		}
+		hi := CheckCollisionMeshRay(n, ray)
+		if hi.hit && (!hitinfo.hit || (hi.distance < hitinfo.distance)) {
+			hitinfo = hi
+		}
+	}
+	return hitinfo
 }
 
 
