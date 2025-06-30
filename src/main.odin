@@ -6,6 +6,7 @@ import "core:mem"
 import "core:sync"
 import th "core:thread"
 import "core:time"
+import "track"
 import rl "vendor:raylib"
 
 WINDOW_WIDTH :: 1920
@@ -14,7 +15,6 @@ WINDOW_HEIGHT :: 1080
 PHYSICS_DT :: .001
 PHYSICS_NS :: time.Millisecond
 
-track: rl.Model
 player_model: rl.Model
 skybox_model: rl.Model
 
@@ -51,8 +51,8 @@ physics_thread :: proc() {
 main :: proc() {
 	rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "kart-racer-attempt")
 	defer {
-		unload_models()
 		unload_shaders()
+		unload_models()
 		destroy_input()
 		destroy_collision()
 		rl.CloseWindow()
@@ -76,14 +76,7 @@ main :: proc() {
 
 	register_keys([]rl.KeyboardKey{.W, .S, .A, .D})
 
-	track.materials[0].shader = unlit
-	track.materials[1].shader = unlit
-	track.materials[2].shader = unlit
-
 	skybox_model.materials[0].shader = skybox
-
-	add_mesh_collider(track.meshes[0], &StaticColliders)
-	add_mesh_collider(track.meshes[2], &StaticColliders)
 
 	player := create_player()
 	player.position = {30, -1, -40}
@@ -92,6 +85,26 @@ main :: proc() {
 
 	rl.DisableCursor()
 	defer rl.EnableCursor()
+
+	colliding_meshes := make([dynamic]TrackMesh)
+	defer delete(colliding_meshes)
+
+	no_collision_meshes := make([dynamic]TrackMesh)
+	defer delete(no_collision_meshes)
+
+	if !open_level(
+		"level1.klv",
+		&colliding_meshes,
+		&no_collision_meshes,
+		&track.textureReferences,
+	) {
+		fmt.println("couldn't open level")
+		return
+	}
+
+	for &m in colliding_meshes {
+		add_mesh_collider(m.mesh, &StaticColliders)
+	}
 
 	dt: f32
 	rayDistance: f32
@@ -122,8 +135,13 @@ main :: proc() {
 						player_render(&player, &player_model)
 					}
 				}
-				rl.DrawModel(track, {0, 0, 0}, 1, rl.WHITE)
-				draw_collider(StaticColliders[0])
+				for m in colliding_meshes {
+					rl.DrawMesh(m.mesh, m.material, rl.Matrix(1))
+				}
+				for m in no_collision_meshes {
+					rl.DrawMesh(m.mesh, m.material, rl.Matrix(1))
+				}
+				//draw_collider(StaticColliders[0])
 			}
 			rl.EndMode3D()
 			rl.DrawRectangle(0, 0, 400, 180, rl.ColorAlpha(rl.BLACK, .5))
@@ -144,17 +162,6 @@ main :: proc() {
 }
 
 load_models :: proc() {
-	track = rl.LoadModel("res/models/track1.obj")
-	track.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
-		"res/textures/black_08.png",
-	)
-	track.materials[1].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
-		"res/textures/orange_08.png",
-	)
-	track.materials[1].maps[rl.MaterialMapIndex.ALBEDO].color = rl.WHITE
-	track.materials[2].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
-		"res/textures/purple_08.png",
-	)
 	player_model = rl.LoadModel("res/models/vehicle-racer.obj")
 	player_model.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture = rl.LoadTexture(
 		"res/textures/colormap.png",
@@ -174,10 +181,6 @@ load_shaders :: proc() {
 
 unload_models :: proc() {
 	rl.UnloadTexture(player_model.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture)
-	rl.UnloadTexture(track.materials[0].maps[rl.MaterialMapIndex.ALBEDO].texture)
-	rl.UnloadTexture(track.materials[1].maps[rl.MaterialMapIndex.ALBEDO].texture)
-	rl.UnloadTexture(track.materials[2].maps[rl.MaterialMapIndex.ALBEDO].texture)
-	rl.UnloadModel(track)
 	rl.UnloadModel(player_model)
 	rl.UnloadModel(skybox_model)
 }

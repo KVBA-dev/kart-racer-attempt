@@ -90,7 +90,14 @@ player_update :: proc(using player: ^Player, dt: f32) {
 			turnAmount *= la.clamp(la.length(rb.linVel / maxSpeed), 0, 1)
 		}
 		rotation =
-			la.quaternion_angle_axis_f32(turnAmount * turnSpeed * dt * math.RAD_PER_DEG, localUp) *
+			la.quaternion_angle_axis_f32(
+				turnAmount *
+				turnSpeed *
+				dt *
+				math.RAD_PER_DEG *
+				math.sign(la.dot(rb.linVel, forw)),
+				localUp,
+			) *
 			rotation
 	}
 
