@@ -11,12 +11,7 @@ TrackMesh :: struct {
 	material: rl.Material,
 }
 
-open_level :: proc(
-	path: string,
-	collidingMeshes: ^[dynamic]TrackMesh,
-	noCollisionMeshes: ^[dynamic]TrackMesh,
-	textures: ^[dynamic]track.TextureReference,
-) -> bool {
+open_level :: proc(path: string) -> (level: ^Level, ok: bool) {
 	path := path
 	if !fp.is_abs(path) {
 		path, _ = fp.abs(path, context.temp_allocator)
@@ -24,16 +19,15 @@ open_level :: proc(
 
 	track_def := track.Track{}
 	if !load_cbor(path, &track_def) {
-		return false
+		return nil, false
 	}
 	defer track.destroy_track(&track_def)
 
+	level = make_level()
+	append(&level.materials, rl.LoadMaterialDefault())
+
 	dir := fp.dir(path)
 	defer delete(dir)
-
-	clear(collidingMeshes)
-	clear(noCollisionMeshes)
-	clear(textures)
 
 	for &sm in track_def.staticModels {
 		fpath, err := fp.clean(
@@ -41,9 +35,11 @@ open_level :: proc(
 			context.temp_allocator,
 		)
 		if err != nil do panic(fmt.tprint("error:", sm.filepath, "doesn't exist"))
-		ref := track.try_load_file(fpath)
-
-		mref := ref.(track.ModelReference)
+		mref := track.try_load_file(fpath).(track.ModelReference)
+		defer {
+			rl.MemFree(mref.model.meshes)
+			delete(mref.meshLayers)
+		}
 
 		matloop: for &smmat in sm.materials {
 			if smmat.albedo == "" {
@@ -53,28 +49,44 @@ open_level :: proc(
 				fp.join({dir, smmat.albedo}, context.temp_allocator),
 				context.temp_allocator,
 			)
-			for &tref in textures {
+			for &tref in level.textures {
 				if fpath == tref.path {
 					mref.textureIdx[smmat.idx] = &tref
 					continue matloop
 				}
 			}
 			tex_ref := track.try_load_file(fpath).(track.TextureReference)
-			append(textures, tex_ref)
-			mref.textureIdx[smmat.idx] = &textures[len(textures) - 1]
+			append(&level.textures, tex_ref)
+			mref.textureIdx[smmat.idx] = &level.textures[len(level.textures) - 1]
 		}
 		for &smm in sm.meshes {
-			track_mesh := TrackMesh{}
-			track_mesh.mesh = mref.model.meshes[smm.idx]
+			append(&level.meshes, mref.model.meshes[smm.idx])
+			mesh_mat := [2]int{}
+			mesh_mat[0] = int(smm.idx)
+			mesh_mat[1] = 0
 			if mref.textureIdx[smm.idx] != nil {
-				track_mesh.material = rl.LoadMaterialDefault()
-				track_mesh.material.maps[rl.MaterialMapIndex.ALBEDO].texture =
-					mref.textureIdx[smm.idx].texture
+				// find the material that uses this texture
+				found := false
+				for &mat, idx in level.materials {
+					if mat.maps[rl.MaterialMapIndex.ALBEDO].texture ==
+					   mref.textureIdx[smm.idx].texture {
+						found = true
+						mesh_mat[1] = idx
+						break
+					}
+				}
+				if !found {
+					mesh_mat[1] = len(level.materials)
+					newMat := rl.LoadMaterialDefault()
+					newMat.maps[rl.MaterialMapIndex.ALBEDO].texture =
+						mref.textureIdx[smm.idx].texture
+					append(&level.materials, newMat)
+				}
 			}
 			if smm.layer == .NoCollision {
-				append(noCollisionMeshes, track_mesh)
+				append(&level.non_colliding_meshes, mesh_mat)
 			} else {
-				append(collidingMeshes, track_mesh)
+				append(&level.colliding_meshes, mesh_mat)
 			}
 		}
 	}
@@ -85,5 +97,5 @@ open_level :: proc(
 	minimapCam.fovy = track_def.minimap.zoom
 	*/
 
-	return true
+	return level, true
 }

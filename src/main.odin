@@ -12,8 +12,13 @@ import rl "vendor:raylib"
 WINDOW_WIDTH :: 1920
 WINDOW_HEIGHT :: 1080
 
-PHYSICS_DT :: .001
-PHYSICS_NS :: time.Millisecond
+when !ODIN_DEBUG {
+	PHYSICS_DT :: .001
+	PHYSICS_NS :: time.Millisecond
+} else {
+	PHYSICS_DT :: .005
+	PHYSICS_NS :: 5 * time.Millisecond
+}
 
 player_model: rl.Model
 skybox_model: rl.Model
@@ -86,24 +91,15 @@ main :: proc() {
 	rl.DisableCursor()
 	defer rl.EnableCursor()
 
-	colliding_meshes := make([dynamic]TrackMesh)
-	defer delete(colliding_meshes)
-
-	no_collision_meshes := make([dynamic]TrackMesh)
-	defer delete(no_collision_meshes)
-
-	if !open_level(
-		"level1.klv",
-		&colliding_meshes,
-		&no_collision_meshes,
-		&track.textureReferences,
-	) {
+	level, ok := open_level("level1.klv")
+	if !ok {
 		fmt.println("couldn't open level")
 		return
 	}
+	defer delete_level(level)
 
-	for &m in colliding_meshes {
-		add_mesh_collider(m.mesh, &StaticColliders)
+	for &m in level.colliding_meshes {
+		add_mesh_collider(level.meshes[m[0]], &StaticColliders)
 	}
 
 	dt: f32
@@ -135,11 +131,11 @@ main :: proc() {
 						player_render(&player, &player_model)
 					}
 				}
-				for m in colliding_meshes {
-					rl.DrawMesh(m.mesh, m.material, rl.Matrix(1))
+				for m in level.colliding_meshes {
+					rl.DrawMesh(level.meshes[m[0]], level.materials[m[1]], rl.Matrix(1))
 				}
-				for m in no_collision_meshes {
-					rl.DrawMesh(m.mesh, m.material, rl.Matrix(1))
+				for m in level.non_colliding_meshes {
+					rl.DrawMesh(level.meshes[m[0]], level.materials[m[1]], rl.Matrix(1))
 				}
 				//draw_collider(StaticColliders[0])
 			}
@@ -158,7 +154,7 @@ main :: proc() {
 		rl.EndDrawing()
 	}
 	it.atomic_store(&running, false)
-	th.join(physicsThread)
+	th.destroy(physicsThread)
 }
 
 load_models :: proc() {
