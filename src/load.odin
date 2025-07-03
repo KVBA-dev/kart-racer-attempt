@@ -26,6 +26,8 @@ open_level :: proc(path: string) -> (level: ^Level, ok: bool) {
 	level = make_level()
 	append(&level.materials, rl.LoadMaterialDefault())
 
+	level.finish_line = track_def.finishLine
+
 	dir := fp.dir(path)
 	defer delete(dir)
 

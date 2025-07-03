@@ -14,7 +14,7 @@ WINDOW_HEIGHT :: 1080
 
 when !ODIN_DEBUG {
 	PHYSICS_DT :: .001
-	PHYSICS_NS :: time.Millisecond
+	PHYSICS_NS :: 1 * time.Millisecond
 } else {
 	PHYSICS_DT :: .005
 	PHYSICS_NS :: 5 * time.Millisecond
@@ -83,9 +83,6 @@ main :: proc() {
 
 	skybox_model.materials[0].shader = skybox
 
-	player := create_player()
-	player.position = {30, -1, -40}
-	players[0] = player
 	//playersRenderBuffer[0] = player
 
 	rl.DisableCursor()
@@ -100,6 +97,33 @@ main :: proc() {
 
 	for &m in level.colliding_meshes {
 		add_mesh_collider(level.meshes[m[0]], &StaticColliders)
+	}
+
+	player := create_player()
+	players[0] = player
+
+	start_forw := la.quaternion_mul_vector3(
+		level.finish_line.transform.rotation,
+		rl.Vector3{0, 0, 1},
+	)
+	start_right := la.quaternion_mul_vector3(
+		level.finish_line.transform.rotation,
+		rl.Vector3{1, 0, 0},
+	)
+	startPos: for z in 0 ..< 3 {
+		for x in 0 ..< 4 {
+			p_idx := z * 4 + x
+			if p_idx >= NUM_PLAYERS do break startPos
+			if players[p_idx] == {} {
+				continue
+			}
+			players[p_idx].position = level.finish_line.transform.translation
+			players[p_idx].position -= start_forw * f32(z + 1) * level.finish_line.spreadZ
+			players[p_idx].position += start_right * (f32(x) - 1.5) * level.finish_line.spreadX
+			players[p_idx].startPos.translation = players[p_idx].position
+			players[p_idx].rotation = level.finish_line.transform.rotation
+			players[p_idx].startPos.rotation = players[p_idx].rotation
+		}
 	}
 
 	dt: f32
@@ -119,6 +143,12 @@ main :: proc() {
 			currplayer.axisV = (Input.keys[.W].held ? 1 : 0) - (Input.keys[.S].held ? 1 : 0)
 			player_orient_towards_up(currplayer, StaticColliders[0].mesh, dt)
 			camera_follow_player(&cam, currplayer, dt)
+			if rl.IsKeyPressed(.R) {
+				currplayer.position = currplayer.startPos.translation
+				currplayer.rotation = currplayer.startPos.rotation
+				currplayer.rb.linVel = {}
+				currplayer.rb.linAccel = {}
+			}
 		}
 		rl.BeginDrawing()
 		{

@@ -11,6 +11,7 @@ hl: f32
 Player :: struct {
 	wheels:     [3]WheelRaycaster, // 29 * 3 = 87
 	rb:         Rigidbody, // 40
+	startPos:   rl.Transform, // 40
 	rotation:   rl.Quaternion, // 16
 	position:   rl.Vector3, // 12
 	localUp:    rl.Vector3, // 12

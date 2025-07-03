@@ -9,6 +9,7 @@ Level :: struct {
 	textures:             [dynamic]track.TextureReference,
 	colliding_meshes:     [dynamic][2]int,
 	non_colliding_meshes: [dynamic][2]int,
+	finish_line:          track.FinishLine,
 }
 
 make_level :: proc() -> ^Level {

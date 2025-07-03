@@ -37,6 +37,7 @@ get_layer_name :: proc(l: StaticLayer) -> string {
 Track :: struct {
 	staticModels: []StaticModel,
 	minimap:      MinimapSettings,
+	finishLine:   FinishLine,
 }
 
 StaticModel :: struct {
@@ -58,6 +59,22 @@ StaticMaterial :: struct {
 MinimapSettings :: struct {
 	offset: rl.Vector2,
 	zoom:   f32,
+}
+FinishLine :: struct {
+	transform: rl.Transform,
+	spreadX:   f32,
+	spreadZ:   f32,
+}
+
+ItemBoxRow :: struct {
+	transform: rl.Transform,
+	count:     int,
+	spread:    f32,
+}
+
+TrackObject :: union {
+	FinishLine,
+	ItemBoxRow,
 }
 
 destroy_track :: proc(t: ^Track) {
