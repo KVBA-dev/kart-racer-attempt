@@ -32,7 +32,7 @@ physics_lock := sync.Mutex{}
 running := true
 physicsTime: f64
 
-NUM_PLAYERS :: 1
+NUM_PLAYERS :: 12
 players: [NUM_PLAYERS]Player
 
 physics_thread :: proc() {
@@ -44,9 +44,9 @@ physics_thread :: proc() {
 		previous = time.time_add(previous, PHYSICS_NS)
 		if sync.mutex_guard(&physics_lock) {
 			start := time.now()
-			for &player in players {
-				player_update(&player, PHYSICS_DT)
-				player_physics_update(&player, PHYSICS_DT)
+			for &player, idx in players {
+				player_update(&player, PHYSICS_DT, idx)
+				player_physics_update(&player, PHYSICS_DT, idx)
 			}
 			physicsTime = time.duration_microseconds(time.since(start))
 		}
@@ -99,8 +99,9 @@ main :: proc() {
 		add_mesh_collider(level.meshes[m[0]], &StaticColliders)
 	}
 
-	player := create_player()
-	players[0] = player
+	for i in 0 ..< NUM_PLAYERS {
+		players[i] = create_player()
+	}
 
 	start_forw := la.quaternion_mul_vector3(
 		level.finish_line.transform.rotation,
@@ -144,10 +145,16 @@ main :: proc() {
 			player_orient_towards_up(currplayer, StaticColliders[0].mesh, dt)
 			camera_follow_player(&cam, currplayer, dt)
 			if rl.IsKeyPressed(.R) {
-				currplayer.position = currplayer.startPos.translation
-				currplayer.rotation = currplayer.startPos.rotation
-				currplayer.rb.linVel = {}
-				currplayer.rb.linAccel = {}
+				for &p in players {
+					p.position = p.startPos.translation
+					p.rotation = p.startPos.rotation
+					p.rb.linVel = {}
+					p.rb.linAccel = {}
+				}
+			}
+
+			for &bot in players[1:] {
+				bot.axisV = 1
 			}
 		}
 		rl.BeginDrawing()

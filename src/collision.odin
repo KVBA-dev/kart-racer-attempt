@@ -31,6 +31,10 @@ Collider :: union {
 
 StaticColliders: [dynamic]MeshCollider
 
+// NOTE: linear search actually isn't as slow as i thought
+//       BVH tree not needed?
+PlayerColliders: [NUM_PLAYERS]SphereCollider
+
 Rigidbody :: struct {
 	centerOfMass: rl.Vector3,
 	linAccel:     rl.Vector3,
@@ -385,15 +389,15 @@ CheckCollisionMeshRay :: proc(octree: ^Octree, ray: rl.Ray) -> rl.RayCollision {
 
 
 CheckCollisionSpheres :: proc(s1, s2: SphereCollider) -> (bool, Collision) {
-	dist := rl.Vector3Distance(s1.center, s2.center)
+	dist := la.length2(s1.center - s2.center)
 	radii := s1.radius + s2.radius
-	if radii >= rl.Vector3Distance(s1.center, s2.center) {
-		normal := rl.Vector3Normalize(s1.center - s2.center)
+	if radii * radii >= dist {
+		normal := la.normalize(s1.center - s2.center)
 		col := Collision {
-			direction     = normal,
+			direction     = -normal,
 			contact_point = s1.center - normal * s1.radius,
 		}
-		col.distance = rl.Vector3Distance(col.contact_point, radii - dist)
+		col.distance = radii - math.sqrt(dist)
 		return true, col
 	}
 	return false, {}

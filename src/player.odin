@@ -50,7 +50,7 @@ create_player :: proc() -> Player {
 	return p
 }
 
-player_update :: proc(using player: ^Player, dt: f32) {
+player_update :: proc(using player: ^Player, dt: f32, colliderIdx: int) {
 	up = player_up(player)
 	forw = player_forward(player)
 	right = player_right(player)
@@ -101,7 +101,10 @@ player_update :: proc(using player: ^Player, dt: f32) {
 			) *
 			rotation
 	}
-
+	PlayerColliders[colliderIdx] = SphereCollider {
+		center = position,
+		radius = radius,
+	}
 }
 
 player_orient_towards_up :: proc(
@@ -126,9 +129,9 @@ player_orient_towards_up :: proc(
 	rotation = la.quaternion_angle_axis_f32(-angle * 2 * dt, axis) * rotation
 }
 
-// TODO: interact with other objects
+// TODO: implement conservation of momentum
 allCollisions: [dynamic]Collision
-player_physics_update :: proc(using player: ^Player, dt: f32) {
+player_physics_update :: proc(using player: ^Player, dt: f32, colliderIdx: int) {
 	GRAVITY :: 10.0
 
 	add_acceleration(&rb, rl.Vector3{0, -GRAVITY, 0})
@@ -148,6 +151,13 @@ player_physics_update :: proc(using player: ^Player, dt: f32) {
 	for &mc in StaticColliders {
 		collisions := CheckCollisionMeshSphere(mc.mesh, SphereCollider{position, radius})
 		append(&allCollisions, ..collisions)
+	}
+	for pc, i in PlayerColliders {
+		if colliderIdx == i do continue
+		hit, collision := CheckCollisionSpheres(PlayerColliders[colliderIdx], PlayerColliders[i])
+		if hit {
+			append(&allCollisions, collision)
+		}
 	}
 	sort_collisions_by_grounding(allCollisions[:], localUp)
 	for c in allCollisions {
